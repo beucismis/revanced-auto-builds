@@ -33,7 +33,7 @@ A sophisticated, automated pipeline that builds ready-to-install ReVanced applic
 
 | Mirror | Description | Link |
 | :--- | :--- | :--- |
-| **GitHub Releases** | Primary source. Contains all builds. | [**Download Latest Release**](https://github.com/sarthaksinha2800-cell/revanced-nonroot/releases/latest) |
+| **GitHub Releases** | Primary source. Contains all builds. | [**Download Latest Release**](https://RookieEnough/Revanced-AutoBuilds/releases/latest) |
 
 ### 📱 Supported Apps & Architectures
 
