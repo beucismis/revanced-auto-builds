@@ -2,7 +2,7 @@
     "org": "smart-launcher-team",
     "name": "icon-pack-studio",
     "type": "APK",
-    "arch": "universal",
+    "arch": "noarch",
     "dpi": "nodpi",
     "package": "ginlemon.iconpackstudio",
     "version": ""
