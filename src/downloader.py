@@ -38,11 +38,6 @@ def download_required(source: str) -> tuple[list[Path], str]:
     with source_path.open() as json_file:
         repos_info = json.load(json_file)
 
-    # Handle new bundle format
-    if isinstance(repos_info, dict) and "bundle_url" in repos_info:
-        return download_from_bundle(repos_info)
-    
-    # Handle old list format (original code)
     name = repos_info[0]["name"]
     downloaded_files = []
 
@@ -60,55 +55,24 @@ def download_required(source: str) -> tuple[list[Path], str]:
 
     return downloaded_files, name
 
-
-def download_from_bundle(bundle_info: dict) -> tuple[list[Path], str]:
-    """Download resources from a bundle URL"""
-    bundle_url = bundle_info["bundle_url"]
-    name = bundle_info.get("name", "bundle-patches")
-    
-    logging.info(f"Downloading bundle from {bundle_url}")
-    
-    # Download the bundle JSON
-    with session.get(bundle_url) as res:
-        res.raise_for_status()
-        bundle_data = res.json()
-    
-    downloaded_files = []
-    
-    # Check API version and structure
-    if "patches" in bundle_data:
-        # API v4 format
-        patches = bundle_data.get("patches", [])
-        integrations = bundle_data.get("integrations", [])
-        
-        # Download patches (JAR files)
-        for patch in patches:
-            if "url" in patch:
-                filepath = download_resource(patch["url"])
-                downloaded_files.append(filepath)
-                logging.info(f"Downloaded patch: {patch.get('name', 'unknown')}")
-        
-        # Download integrations (APK files)
-        for integration in integrations:
-            if "url" in integration:
-                filepath = download_resource(integration["url"])
-                downloaded_files.append(filepath)
-                logging.info(f"Downloaded integration: {integration.get('name', 'unknown')}")
-    
-    # Also download CLI (still needed)
-    cli_release = utils.detect_github_release("revanced", "revanced-cli", "latest")
-    for asset in cli_release["assets"]:
-        if asset["name"].endswith(".asc"):
-            continue
-        if asset["name"].endswith(".jar"):
-            filepath = download_resource(asset["browser_download_url"])
-            downloaded_files.append(filepath)
-            logging.info("Downloaded ReVanced CLI")
-            break
-    
-    return downloaded_files, name
-
 def download_platform(app_name: str, platform: str, cli: str, patches: str, arch: str = None) -> tuple[Path | None, str | None]:
+    """
+    Download APK from a specific platform.
+    
+    Args:
+        app_name: Name of the app
+        platform: Platform name (apkmirror, apkpure, uptodown)
+        cli: Path to CLI jar
+        patches: Path to patches file
+        arch: Architecture (optional)
+    
+    Returns:
+        Tuple of (filepath, version) or (None, None) if failed
+    
+    Raises:
+        FileNotFoundError: If config file doesn't exist
+        Exception: For other errors
+    """
     try:
         config_path = Path("apps") / platform / f"{app_name}.json"
         if not config_path.exists():
@@ -121,26 +85,58 @@ def download_platform(app_name: str, platform: str, cli: str, patches: str, arch
         if arch:
             config['arch'] = arch
 
-        version = config.get("version") or utils.get_supported_version(config['package'], cli, patches)
-        platform_module = globals()[platform]
-        version = version or platform_module.get_latest_version(app_name, config)
+        # Get version from config or determine supported version
+        version = config.get("version")
         
+        # If version is empty string or None, determine it
+        if not version:
+            # First try to get supported version from patches
+            try:
+                version = utils.get_supported_version(config['package'], cli, patches)
+                logging.info(f"Determined supported version from patches: {version}")
+            except Exception as e:
+                logging.debug(f"Could not determine version from patches: {e}")
+                version = None
+        
+        # If still no version, try to get latest from platform
+        if not version:
+            platform_module = globals()[platform]
+            version = platform_module.get_latest_version(app_name, config)
+            logging.info(f"Using latest version from {platform}: {version}")
+        
+        # If STILL no version, this is a problem
+        if not version:
+            raise ValueError(f"Could not determine version for {app_name} on {platform}")
+        
+        platform_module = globals()[platform]
         download_link = platform_module.get_download_link(version, app_name, config)
+        
+        if not download_link:
+            raise ValueError(f"Could not get download link for {app_name} v{version} on {platform}")
+        
+        logging.info(f"Downloading {app_name} v{version} from {platform}...")
         filepath = download_resource(download_link)
+        
         return filepath, version 
 
+    except FileNotFoundError as e:
+        # Re-raise FileNotFoundError so caller can handle it
+        raise
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logging.error(f"Error downloading from {platform}: {e}")
         return None, None
 
 # Update the specific download functions
 def download_apkmirror(app_name: str, cli: str, patches: str, arch: str = None) -> tuple[Path | None, str | None]:
+    """Download from APKMirror. Raises FileNotFoundError if config missing."""
     return download_platform(app_name, "apkmirror", cli, patches, arch)
 
 def download_apkpure(app_name: str, cli: str, patches: str, arch: str = None) -> tuple[Path | None, str | None]:
+    """Download from APKPure. Raises FileNotFoundError if config missing."""
     return download_platform(app_name, "apkpure", cli, patches, arch)
 
 def download_uptodown(app_name: str, cli: str, patches: str, arch: str = None) -> tuple[Path | None, str | None]:
+    """Download from Uptodown. Raises FileNotFoundError if config missing."""
     return download_platform(app_name, "uptodown", cli, patches, arch)
 
 def download_apkeditor() -> Path:
