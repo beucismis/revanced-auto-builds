@@ -19,23 +19,24 @@ def run_build(app_name: str, source: str, arch: str = "universal") -> str:
     revanced_cli = utils.find_file(download_files, 'revanced-cli', '.jar')
     revanced_patches = next((f for f in download_files if f.suffix == '.rvp'), None)
 
+        # --- Automatic CLI switch for newer patches ---
     if revanced_patches:
-    # Parse version from filename (works for "patches-5.47.0-ample.2.rvp", "revanced-patches-v3.15.0.rvp", etc.)
-    version_match = re.search(r'(\d+\.\d+(\.\d+)?)', revanced_patches.name)
-    if version_match:
-        version_str = version_match.group(1)
-        major_version = int(version_str.split('.')[0])
-        if major_version >= 5:
-            logging.info(f"Newer patches v{version_str} detected – downloading compatible CLI...")
-            # Reliable dev CLI that works with v5+ patches (from official pre-release)
-            newer_cli_url = "https://github.com/ReVanced/revanced-cli/releases/download/v5.0.2-dev.2/revanced-cli-all.jar"
-            revanced_cli = downloader.download_resource(newer_cli_url, "revanced-cli-new.jar")
-            logging.info("Using newer CLI for compatibility")
+        # Parse version from filename (e.g., "5.47.0" from "patches-5.47.0-ample.2.rvp")
+        version_match = re.search(r'(\d+\.\d+(\.\d+)?)', revanced_patches.name)
+        if version_match:
+            version_str = version_match.group(1)
+            major_version = int(version_str.split('.')[0])
+            if major_version >= 5:
+                logging.info(f"Newer patches v{version_str} detected – downloading compatible community CLI...")
+                # Community fork with updated libraries for v5+ patches (widely used in auto-builds)
+                newer_cli_url = "https://github.com/j-hc/revanced-cli/releases/latest/download/revanced-cli-all.jar"
+                revanced_cli = downloader.download_resource(newer_cli_url, "revanced-cli-community.jar")
+                logging.info("Switched to community CLI for better compatibility")
+            else:
+                logging.info(f"Older patches v{version_str} detected – using standard CLI")
+                # Keep your original CLI
         else:
-            logging.info(f"Older patches v{version_str} detected – using standard CLI")
-            # Keep your existing CLI (already found)
-    else:
-        logging.warning("Could not parse patches version – using standard CLI")
+            logging.warning("Could not parse patches version – using standard CLI")
 
     download_methods = [
         downloader.download_apkmirror,
