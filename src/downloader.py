@@ -1,7 +1,5 @@
 import json
 import logging
-import subprocess
-import re
 from pathlib import Path
 from src import (
     utils,
@@ -57,45 +55,6 @@ def download_required(source: str) -> tuple[list[Path], str]:
 
     return downloaded_files, name
 
-def get_smart_version(package: str, cli: Path, patches: Path) -> str | None:
-    """
-    Locally determines the supported version, handling the syntax difference
-    between ReVanced CLI v4 and v5.
-    """
-    try:
-        # Detect if using CLI v5 based on filename (common convention)
-        is_cli_v5 = "cli-5" in str(cli.name) or "cli-v5" in str(cli.name)
-        
-        cmd = ["java", "-jar", str(cli), "list-versions"]
-        
-        if is_cli_v5:
-            # CLI v5: Patches file MUST come before flags
-            cmd.extend([str(patches), "-f", package])
-        else:
-            # CLI v4: Flags can come before patches
-            cmd.extend(["-f", package, str(patches)])
-
-        # Run the command and capture output
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            check=True
-        )
-        
-        # The output usually contains the version on the last non-empty line
-        output_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-        if output_lines:
-            return output_lines[-1]
-            
-    except subprocess.CalledProcessError as e:
-        logging.warning(f"Version detection failed: {e}")
-        logging.debug(f"Command output: {e.stderr}")
-    except Exception as e:
-        logging.warning(f"Error checking version: {e}")
-        
-    return None
-
 def download_platform(app_name: str, platform: str, cli: str, patches: str, arch: str = None) -> tuple[Path | None, str | None]:
     try:
         config_path = Path("apps") / platform / f"{app_name}.json"
@@ -109,18 +68,7 @@ def download_platform(app_name: str, platform: str, cli: str, patches: str, arch
         if arch:
             config['arch'] = arch
 
-        # Priority: 
-        # 1. Hardcoded in config
-        # 2. Detected via CLI (using local smart function instead of utils.py)
-        # 3. Latest from platform
-        version = config.get("version")
-        
-        if not version:
-            logging.info("Auto-detecting supported version...")
-            version = get_smart_version(config['package'], cli, patches)
-            if version:
-                logging.info(f"Detected supported version: {version}")
-
+        version = config.get("version") or utils.get_supported_version(config['package'], cli, patches)
         platform_module = globals()[platform]
         version = version or platform_module.get_latest_version(app_name, config)
         
