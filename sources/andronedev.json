@@ -1,15 +1,4 @@
-[
-    {
-        "name": "andronedev"
-    },
-    {
-        "user": "revanced",
-        "repo": "revanced-cli",
-        "tag": "latest"
-    },
-    {
-        "user": "andronedev",
-        "repo": "revanced-patches",
-        "tag": "latest"
-    }
-]
+{
+  "name": "andronedev-bundle",
+  "bundle_url": "https://raw.githubusercontent.com/Jman-Github/ReVanced-Patch-Bundles/bundles/patch-bundles/andronedev-patch-bundles/andronedev-stable-patches-bundle.json"
+}
