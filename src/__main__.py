@@ -20,17 +20,48 @@ def run_build(app_name: str, source: str, arch: str = "universal") -> str:
     for file in download_files:
         logging.info(f"  - {file.name} ({file.stat().st_size} bytes)")
 
-    # DETECT SOURCE TYPE AND FIND FILES
-    is_morphe = source == "morphe" or "morphe" in source.lower()
-    
+    # DETECT SOURCE TYPE BASED ON DOWNLOADED FILES
+    is_morphe = False
+    is_revanced = False
+
+    # Check file contents to determine source type
+    for file in download_files:
+        if "morphe-cli" in file.name.lower():
+            is_morphe = True
+            break
+        elif "revanced-cli" in file.name.lower():
+            is_revanced = True
+            break
+
+    # If not detected by CLI name, check patch file extension
+    if not is_morphe and not is_revanced:
+        for file in download_files:
+            if file.suffix == ".mpp":
+                is_morphe = True
+                break
+            elif file.suffix in [".rvp", ".jar"] and "patches" in file.name.lower():
+                is_revanced = True
+                break
+
+    # If still not detected, fallback to source name
+    if not is_morphe and not is_revanced:
+        is_morphe = "morphe" in source.lower() or "custom" in source.lower()
+        is_revanced = not is_morphe  # Default to ReVanced if not Morphe
+
+    logging.info(f"🔍 Detected: {'Morphe' if is_morphe else 'ReVanced'} source type")
+
+    # FIND FILES BASED ON DETECTED TYPE
     if is_morphe:
-        # Find Morphe files
-        cli = utils.find_file(download_files, contains="morphe-cli", suffix=".jar")
-        patches = utils.find_file(download_files, contains="patches", suffix=".mpp")
-        
+        # Find Morphe files - prefer non-dev version
+        cli = utils.find_file(download_files, contains="morphe-cli", suffix=".jar", exclude=["dev"])
         if not cli:
-            # Fallback: any jar with "morphe" in name
+            # Fallback to any Morphe CLI
             cli = utils.find_file(download_files, contains="morphe", suffix=".jar")
+        
+        patches = utils.find_file(download_files, contains="patches", suffix=".mpp")
+        if not patches:
+            # Fallback to any .mpp file
+            patches = utils.find_file(download_files, suffix=".mpp")
     else:
         # Find ReVanced files
         cli = utils.find_file(download_files, contains="revanced-cli", suffix=".jar")
