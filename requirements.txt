@@ -2,4 +2,3 @@ boto3
 PyGithub
 requests
 beautifulsoup4
-cloudscraper
