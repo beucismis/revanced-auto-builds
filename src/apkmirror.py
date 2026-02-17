@@ -74,7 +74,7 @@ def get_download_link(version: str, app_name: str, config: dict, arch: str = Non
         btn = None
         # Method 1: Button with exact text "Download APK"
         for a in soup.find_all('a'):
-            if a.get_text().strip().lower() == "download apk":
+            if a.get_text().strip().lower() == "DOWNLOAD APK":
                 btn = a
                 break
 
