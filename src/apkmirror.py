@@ -36,54 +36,73 @@ def get_download_link(version: str, app_name: str, config: dict, arch: str = Non
     version_dash = version.replace('.', '-').lower()
     release_name = config.get('release_prefix', config['name'])
 
-    # ===================================================================
-    # 1. BUILD THE EXACT RELEASE PAGE URL
-    # ===================================================================
-    exact_release_url = f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{release_name}-{version_dash}-release/"
-    logging.info(f"Using release page: {exact_release_url}")
+    # 1. Release page
+    release_url = f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{release_name}-{version_dash}-release/"
+    logging.info(f"Loading release page: {release_url}")
+    time.sleep(3 + random.random())
 
-    # ===================================================================
-    # 2. GENERATE VARIANT PAGE URL (your idea - this is the most reliable way in 2026)
-    # ===================================================================
-    variant_suffix_map = {
+    try:
+        response = scraper.get(release_url)
+        response.encoding = 'utf-8'
+        response.raise_for_status()
+        logging.info(f"✓ Release page loaded")
+    except Exception as e:
+        logging.error(f"Release page failed: {e}")
+        return None
+
+    # 2. Generate variant page (exact pattern that works for your links)
+    variant_map = {
         "arm64-v8a": "3",
         "armeabi-v7a": "4",
         "x86": "5",
-        "x86_64": "6",
-        "universal": "3"   # fallback
+        "x86_64": "6"
     }
-    suffix = variant_suffix_map.get(target_arch, "3")
+    suffix = variant_map.get(target_arch, "3")
+    variant_url = f"{release_url.rstrip('/')}/{release_name}-{version_dash}-{suffix}-android-apk-download/"
+    logging.info(f"Generated variant page for {target_arch}: {variant_url}")
 
-    variant_page_url = f"{exact_release_url.rstrip('/')}/{release_name}-{version_dash}-{suffix}-android-apk-download/"
-    logging.info(f"Generated variant page for {target_arch}: {variant_page_url}")
-
-    # ===================================================================
-    # 3. GO STRAIGHT TO VARIANT PAGE → CLICK DOWNLOAD BUTTON
-    # ===================================================================
+    # 3. Load variant page and extract the REAL download button
     try:
-        time.sleep(2 + random.random())
-        response = scraper.get(variant_page_url)
+        time.sleep(3 + random.random())
+        response = scraper.get(variant_url)
         response.encoding = 'utf-8'
-        if response.status_code != 200:
-            logging.error(f"Variant page returned {response.status_code}")
-            return None
-
+        response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Current APKMirror download button (2026 layout)
-        btn = (
-            soup.find('a', href=lambda h: h and 'forcebaseapk=true' in h) or
-            soup.find('a', class_='downloadButton') or
-            soup.find('a', href=lambda h: h and 'download/' in h)
-        )
+        logging.debug(f"Variant page title: {soup.find('title').get_text() if soup.find('title') else 'No title'}")
+
+        btn = None
+        # Method 1: Button with exact text "Download APK"
+        for a in soup.find_all('a'):
+            if a.get_text().strip().lower() == "download apk":
+                btn = a
+                break
+
+        # Method 2: Any link containing forcebaseapk=true
+        if not btn:
+            for a in soup.find_all('a', href=True):
+                if 'forcebaseapk=true' in a['href']:
+                    btn = a
+                    break
+
+        # Method 3: Any link containing download/?key=
+        if not btn:
+            for a in soup.find_all('a', href=True):
+                if 'download/?key=' in a['href']:
+                    btn = a
+                    break
 
         if btn and btn.get('href'):
             final_url = APKMIRROR_BASE + btn['href']
-            logging.info(f"✅ SUCCESS - Final APK URL: {final_url}")
+            logging.info(f"✅ SUCCESS - Final APK download URL: {final_url}")
             return final_url
+        else:
+            logging.error("Button not found. Dumping all links on variant page:")
+            for a in soup.find_all('a', href=True)[:30]:
+                logging.debug(f"  Link: {a.get('href')} | Text: {a.get_text()[:50]}")
 
     except Exception as e:
-        logging.error(f"Variant download failed: {e}")
+        logging.error(f"Variant page or button extraction failed: {e}")
 
     logging.error("All methods failed")
     return None
@@ -95,7 +114,7 @@ def get_latest_version(app_name: str, config: dict, scraper=None) -> str:
     if scraper is None:
         scraper = create_scraper_session()
     url = f"{APKMIRROR_BASE}/uploads/?appcategory={config['name']}"
-    time.sleep(2 + random.random())
+    time.sleep(3 + random.random())
     response = scraper.get(url)
     response.encoding = 'utf-8'
     response.raise_for_status()
