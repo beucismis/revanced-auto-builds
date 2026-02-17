@@ -4,6 +4,14 @@ import logging
 from bs4 import BeautifulSoup
 from src import base_url, session
 
+# Add headers to bypass 403
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Referer': 'https://www.apkmirror.com/',
+})
+
 def get_download_link(version: str, app_name: str, config: dict, arch: str = None) -> str: 
     target_arch = arch if arch else config.get('arch', 'universal')
     
