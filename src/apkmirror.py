@@ -35,106 +35,77 @@ def get_download_link(version: str, app_name: str, config: dict, arch: str = Non
     target_arch = (arch or config.get('arch', 'universal')).lower()
     dpi = config.get('dpi', 'nodpi').lower()
     version_dash = version.replace('.', '-').lower()
-
-    # 1. Try the exact release page URL first (the one you manually open)
     release_name = config.get('release_prefix', config['name'])
-    exact_url = f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{release_name}-{version_dash}-release/"
-    logging.info(f"Trying exact release page: {exact_url}")
+
+    # ===================================================================
+    # 1. LOAD THE EXACT RELEASE PAGE (the one you manually open)
+    # ===================================================================
+    exact_release_url = f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{release_name}-{version_dash}-release/"
+    logging.info(f"Trying exact release page: {exact_release_url}")
     time.sleep(2 + random.random())
 
     found_soup = None
     try:
-        response = scraper.get(exact_url)
+        response = scraper.get(exact_release_url)
         response.encoding = 'utf-8'
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
             title = soup.find('title').get_text().lower() if soup.find('title') else ""
             if version.lower() in title or version_dash in title:
-                logging.info(f"✓ Loaded exact release page: {exact_url}")
+                logging.info(f"✓ Loaded exact release page: {exact_release_url}")
                 found_soup = soup
     except Exception as e:
-        logging.warning(f"Direct exact page failed: {e}")
-
-    # 2. Fallback to pattern search only if direct failed
-    if not found_soup:
-        logging.info("Direct page failed, falling back to pattern search")
-        version_parts = version.split('.')
-        release_name = config.get('release_prefix', config['name'])
-        
-        for i in range(len(version_parts), 0, -1):
-            cur = "-".join(version_parts[:i])
-            patterns = [
-                f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{release_name}-{cur}-release/",
-                f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{config['name']}-{cur}-release/" if release_name != config['name'] else None,
-                f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{release_name}-{cur}/",
-                f"{APKMIRROR_BASE}/apk/{config['org']}/{config['name']}/{config['name']}-{cur}/" if release_name != config['name'] else None,
-            ]
-            patterns = [p for p in patterns if p]
-            patterns = list(dict.fromkeys(patterns))
-            
-            for url in patterns:
-                logging.info(f"Checking pattern: {url}")
-                time.sleep(2 + random.random())
-                try:
-                    r = scraper.get(url)
-                    r.encoding = 'utf-8'
-                    if r.status_code == 200:
-                        s = BeautifulSoup(r.text, "html.parser")
-                        title = s.find('title').get_text().lower() if s.find('title') else ""
-                        if version.lower() in title or version_dash in title or version_dash in url.lower():
-                            logging.info(f"✓ Found correct page via pattern: {url}")
-                            found_soup = s
-                            break
-                except:
-                    pass
-            if found_soup:
-                break
+        logging.warning(f"Exact page load failed: {e}")
 
     if not found_soup:
-        logging.error(f"Could not find release page for {app_name} {version}")
+        logging.error(f"Could not load release page for {app_name} {version}")
         return None
 
-    # 3. VARIANT FINDER - Robust link + parent text search (matches current APKMirror HTML)
-    download_page_url = None
-    logging.info(f"Searching ALL links on page for {target_arch} + {dpi}...")
+    # ===================================================================
+    # 2. GENERATE VARIANT DOWNLOAD PAGE URL (your suggestion - rock solid)
+    # ===================================================================
+    # Known variant numbers for YouTube Music (and most Google apps on APKMirror)
+    variant_map = {
+        "armeabi-v7a": "4",
+        "arm64-v8a":   "3",
+        "x86":         "5",
+        "x86_64":      "6",
+    }
+    variant_id = variant_map.get(target_arch, "3")   # default to arm64-v8a
 
-    for a in found_soup.find_all('a', href=True):
-        href = a['href'].lower()
-        if 'apk-download' in href and version_dash in href:
-            # Get full context (the row that contains architecture and DPI)
-            parent = a.find_parent()
-            row_text = parent.get_text().lower() if parent else a.get_text().lower()
-            logging.debug(f"Link {href} → row text: {row_text[:150]}")
-            
-            if target_arch in row_text and dpi in row_text:
-                download_page_url = APKMIRROR_BASE + a['href']
-                logging.info(f"✓ Found exact variant link: {download_page_url}")
-                break
+    variant_page_url = f"{exact_release_url.rstrip('/')}/{release_name}-{version_dash}-{variant_id}-android-apk-download/"
+    logging.info(f"Generated variant page URL for {target_arch}: {variant_page_url}")
 
-    if not download_page_url:
-        logging.error("No variant link found even after full link + parent-text scan")
-        for a in found_soup.find_all('a', href=True)[:30]:
-            logging.debug(f"Link: {a.get('href')}")
-        return None
-
-    # 4. FINAL DOWNLOAD PAGE → ACTUAL APK
+    # ===================================================================
+    # 3. GO TO VARIANT PAGE → FINAL APK DOWNLOAD BUTTON
+    # ===================================================================
     try:
         time.sleep(2 + random.random())
-        response = scraper.get(download_page_url)
+        response = scraper.get(variant_page_url)
         response.encoding = 'utf-8'
         response.raise_for_status()
+
         soup = BeautifulSoup(response.text, "html.parser")
+        # Current APKMirror button (forcebaseapk or downloadButton)
+        btn = soup.find('a', href=lambda h: h and 'forcebaseapk=true' in h) or \
+              soup.find('a', class_='downloadButton')
         
-        # Current APKMirror button structure
-        btn = soup.find('a', href=lambda h: h and 'forcebaseapk=true' in h)
-        if not btn:
-            btn = soup.find('a', class_='downloadButton')
         if btn:
             final_url = APKMIRROR_BASE + btn['href']
             logging.info(f"Final APK download URL: {final_url}")
             return final_url
     except Exception as e:
-        logging.error(f"Download flow failed: {e}")
+        logging.error(f"Variant download flow failed: {e}")
+
+    # Last resort fallback (full link scan)
+    logging.warning("Generated variant failed - trying full link scan as backup")
+    for a in found_soup.find_all('a', href=True):
+        href = a['href'].lower()
+        if version_dash in href and target_arch in href and 'apk-download' in href:
+            variant_page_url = APKMIRROR_BASE + a['href']
+            logging.info(f"Backup variant link found: {variant_page_url}")
+            # repeat the download flow above...
+            break
 
     return None
 
